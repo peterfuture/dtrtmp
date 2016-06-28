@@ -2,7 +2,7 @@
  * =====================================================================================
  *
  *    Filename   :  rtmp_test.cpp
- *    Description:  
+ *    Description:
  *    Version    :  1.0
  *    Created    :  2016年06月28日 18时21分49秒
  *    Revision   :  none

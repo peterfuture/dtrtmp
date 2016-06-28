@@ -2,7 +2,7 @@
  * =====================================================================================
  *
  *    Filename   :  rtmp_api.h
- *    Description:  
+ *    Description:
  *    Version    :  1.0
  *    Created    :  2016年06月28日 18时41分47秒
  *    Revision   :  none
@@ -20,16 +20,14 @@
 #include <stdlib.h>
 #include <string.h>
 
-struct rtmp_para
-{
+struct rtmp_para {
     char uri[1024];
     char ip[100];
     int port;
     int write_enable;
 };
 
-struct rtmp_context
-{
+struct rtmp_context {
     struct rtmp_para para;
     void *rtmp;
 };

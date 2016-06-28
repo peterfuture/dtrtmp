@@ -2,7 +2,7 @@
  * =====================================================================================
  *
  *    Filename   :  rtmp_api.c
- *    Description:  
+ *    Description:
  *    Version    :  1.0
  *    Created    :  2016年06月28日 18时30分27秒
  *    Revision   :  none
@@ -20,27 +20,32 @@
 struct rtmp_context *rtmp_open(struct rtmp_para *para)
 {
     struct rtmp_context *handle = (struct rtmp_context *)malloc(sizeof(struct rtmp_context));
-    if(!handle)
+    if (!handle) {
         return NULL;
+    }
 
     memcpy(&handle->para, para, sizeof(struct rtmp_para));
     RTMP *rtmp = RTMP_Alloc();
-    if(!rtmp) {
+    if (!rtmp) {
         free(handle);
         return NULL;
     }
     RTMP_Init(rtmp);
     int ret = RTMP_SetupURL(rtmp, para->uri);
-    if(!ret)
+    if (!ret) {
         goto fail;
-    if(para->write_enable)
+    }
+    if (para->write_enable) {
         RTMP_EnableWrite(rtmp);
+    }
     ret = RTMP_Connect(rtmp, NULL);
-    if(!ret)
+    if (!ret) {
         goto fail;
+    }
     ret = RTMP_ConnectStream(rtmp, 0);
-    if(!ret)
+    if (!ret) {
         goto fail;
+    }
     handle->rtmp = (void *)rtmp;
     return handle;
 fail:
