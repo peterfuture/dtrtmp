@@ -11,6 +11,8 @@ INCDIR=$(DESTDIR)$(incdir)
 LIBDIR=$(DESTDIR)$(libdir)
 MANDIR=$(DESTDIR)$(mandir)
 
+#CROSS_COMPILE=arm-linux-androideabi-
+
 CC=$(CROSS_COMPILE)gcc
 LD=$(CROSS_COMPILE)ld
 AR=$(CROSS_COMPILE)ar
