@@ -14,6 +14,7 @@
  */
 
 #ifndef RTMP_API_H
+#define RTMP_API_H
 
 #include <stdio.h>
 #include <stdint.h>

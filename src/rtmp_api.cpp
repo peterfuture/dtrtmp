@@ -16,6 +16,7 @@
 
 #include "rtmp.h"
 #include "rtmp_api.h"
+#include "flvmux_api.h"
 
 struct rtmp_context *rtmp_open(struct rtmp_para *para)
 {
