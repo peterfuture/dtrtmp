@@ -111,57 +111,6 @@ int flvmux_setup_audio_frame(struct flvmux_context *handle, struct flvmux_packet
     return 0;
 }
 
-
-static uint32_t find_startcode(uint8_t *buf, uint32_t zeros_in_startcode)
-{
-    uint32_t info;
-    uint32_t i;
-
-    info = 1;
-    if ((info = (buf[zeros_in_startcode] != 1)? 0: 1) == 0)
-        return 0;
-
-    for (i = 0; i < zeros_in_startcode; i++)
-        if (buf[i] != 0)
-        {
-            info = 0;
-            break;
-        };
-
-    return info;
-}
-
-static uint8_t * get_nal(uint32_t *len, uint8_t **offset, uint8_t *start, uint32_t total)
-{
-    uint32_t info;
-    uint8_t *q ;
-    uint8_t *p  =  *offset;
-    *len = 0;
-
-    while(1) {
-        info =  find_startcode(p, 3);
-        if (info == 1)
-            break;
-        p++;
-        if ((p - start) >= total)
-            return NULL;
-    }
-    q = p + 4;
-    p = q;
-    while(1) {
-        info =  find_startcode(p, 3);
-        if (info == 1)
-            break;
-        p++;
-        if ((p - start) >= total)
-            return NULL;
-    }
-
-    *len = (p - q);
-    *offset = p;
-    return q;
-}
-
 static uint8_t *h264_find_IDR_frame(char *buffer, int total)
 {
     uint8_t *buf = (uint8_t *)buffer;
@@ -193,6 +142,7 @@ static uint8_t *h264_find_NAL(uint8_t *buffer, int total)
 {
     uint8_t *buf = (uint8_t *)buffer;
     while(total > 4){
+#if 0
         if (buf[0]==0x00 && buf[1]==0x00 && buf[2]==0x01) {
             // Found a NAL unit with 3-byte startcode
             if(buf[3] & 0x1F == 0x5) {
@@ -201,7 +151,9 @@ static uint8_t *h264_find_NAL(uint8_t *buffer, int total)
             buf += 3;
             break;
         }
-        else if (buf[0]==0x00 && buf[1]==0x00 && buf[2]==0x00 && buf[3]==0x01) {
+        else 
+#endif
+        if (buf[0]==0x00 && buf[1]==0x00 && buf[2]==0x00 && buf[3]==0x01) {
             // Found a NAL unit with 4-byte startcode
             if(buf[4] & 0x1F == 0x5) {
                 // Found a reference frame, do something with it
@@ -241,7 +193,6 @@ int flvmux_setup_video_frame(struct flvmux_context *handle, struct flvmux_packet
     ts = (uint32_t)in->dts;
     offset = 0;
 
-    //nal = get_nal(&nal_len, &buf_offset, buf, total);
     nal = h264_find_NAL(buf, total);
     if (nal == NULL) {
         log_print(TAG, "Nal Not Found, Skip this frame \n");
