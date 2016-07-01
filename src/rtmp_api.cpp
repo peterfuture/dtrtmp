@@ -24,7 +24,7 @@ struct rtmp_context *rtmp_open(struct rtmp_para *para)
     if (!handle) {
         return NULL;
     }
-
+    memset(handle, 0, sizeof(struct rtmp_context));
     memcpy(&handle->para, para, sizeof(struct rtmp_para));
     RTMP *rtmp = RTMP_Alloc();
     if (!rtmp) {

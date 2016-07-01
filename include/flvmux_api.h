@@ -29,7 +29,7 @@ struct flvmux_packet {
 };
 
 struct flvmux_para {
-    int hav_audio;
+    int has_audio;
     int has_video;
     int afmt;
     int vfmt;
@@ -37,7 +37,7 @@ struct flvmux_para {
 
 struct flvmux_context {
     struct flvmux_para para;
-    char header[1024];
+    uint8_t header[1024];
     int header_size;
     int video_config_ok;
 };
