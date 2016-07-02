@@ -2,7 +2,7 @@
  * =====================================================================================
  *
  *    Filename   :  flv_mux.h
- *    Description:  
+ *    Description:
  *    Version    :  1.0
  *    Created    :  2016年06月30日 13时15分35秒
  *    Revision   :  none

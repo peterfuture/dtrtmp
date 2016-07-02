@@ -2,7 +2,7 @@
  * =====================================================================================
  *
  *    Filename   :  flv_mux.cpp
- *    Description:  
+ *    Description:
  *    Version    :  1.0
  *    Created    :  2016��06��30�� 13ʱ00��09��
  *    Revision   :  none
@@ -48,36 +48,38 @@ static const AVal av_record = AVC("record");
 struct flvmux_context *flvmux_open(struct flvmux_para *para)
 {
     struct flvmux_context *handle = (struct flvmux_context *)malloc(sizeof(struct flvmux_context));
-    if(!handle)
+    if (!handle) {
         return NULL;
+    }
     memset(handle, 0, sizeof(struct flvmux_context));
-    
+
     memcpy(&handle->para, para, sizeof(struct flvmux_para));
     int64_t ts_us = 0;
-   
+
 #if 0 // Used for save FLV File 
     // setup FLV Header
     char flv_file_header[] = "FLV\x1\x5\0\0\0\x9\0\0\0\0"; // have audio and have video
-    if(para->has_video && para->has_audio)
+    if (para->has_video && para->has_audio) {
         flv_file_header[4] = 0x05;
-    else if (para->has_audio && !para->has_video)
+    } else if (para->has_audio && !para->has_video) {
         flv_file_header[4] = 0x04;
-    else if (!para->has_audio && para->has_video)
+    } else if (!para->has_audio && para->has_video) {
         flv_file_header[4] = 0x01;
-    else
+    } else {
         flv_file_header[4] = 0x00;
-    
+    }
+
     memcpy(handle->header, flv_file_header, 13);
     handle->header_size += 13;
 #endif
-    
+
     // setup flv header
     uint32_t body_len;
     uint32_t offset = 0;
     uint32_t output_len;
     char buffer[48];
-    char *output = buffer; 
-    char *outend = buffer + sizeof(buffer); 
+    char *output = buffer;
+    char *outend = buffer + sizeof(buffer);
     char send_buffer[512];
 
     output = AMF_EncodeString(output, outend, &av_onMetaData);
@@ -86,7 +88,7 @@ struct flvmux_context *flvmux_open(struct flvmux_para *para)
     output = AMF_EncodeNamedNumber(output, outend, &av_duration, 0.0);
     body_len = output - buffer;
     output_len = body_len + FLV_TAG_HEAD_LEN + FLV_PRE_TAG_LEN;
-    send_buffer[offset++] = 0x12; //tagtype scripte 
+    send_buffer[offset++] = 0x12; //tagtype scripte
     send_buffer[offset++] = (uint8_t)(body_len >> 16); //data len
     send_buffer[offset++] = (uint8_t)(body_len >> 8); //data len
     send_buffer[offset++] = (uint8_t)(body_len); //data len
@@ -114,17 +116,16 @@ int flvmux_setup_audio_frame(struct flvmux_context *handle, struct flvmux_packet
 static uint8_t *h264_find_IDR_frame(char *buffer, int total)
 {
     uint8_t *buf = (uint8_t *)buffer;
-    while(total > 4){
-        if (buf[0]==0x00 && buf[1]==0x00 && buf[2]==0x01) {
+    while (total > 4) {
+        if (buf[0] == 0x00 && buf[1] == 0x00 && buf[2] == 0x01) {
             // Found a NAL unit with 3-byte startcode
-            if(buf[3] & 0x1F == 0x5) {
+            if (buf[3] & 0x1F == 0x5) {
                 // Found a reference frame, do something with it
             }
             break;
-        }
-        else if (buf[0]==0x00 && buf[1]==0x00 && buf[2]==0x00 && buf[3]==0x01) {
+        } else if (buf[0] == 0x00 && buf[1] == 0x00 && buf[2] == 0x00 && buf[3] == 0x01) {
             // Found a NAL unit with 4-byte startcode
-            if(buf[4] & 0x1F == 0x5) {
+            if (buf[4] & 0x1F == 0x5) {
                 // Found a reference frame, do something with it
             }
             break;
@@ -133,38 +134,39 @@ static uint8_t *h264_find_IDR_frame(char *buffer, int total)
         total--;
     }
 
-    if(total <= 4)
+    if (total <= 4) {
         return NULL;
+    }
     return buf;
 }
 
 static uint8_t *h264_find_NAL(uint8_t *buffer, int total)
 {
     uint8_t *buf = (uint8_t *)buffer;
-    while(total > 4){
+    while (total > 4) {
 #if 0
-        if (buf[0]==0x00 && buf[1]==0x00 && buf[2]==0x01) {
+        if (buf[0] == 0x00 && buf[1] == 0x00 && buf[2] == 0x01) {
             // Found a NAL unit with 3-byte startcode
-            if(buf[3] & 0x1F == 0x5) {
+            if (buf[3] & 0x1F == 0x5) {
                 // Found a reference frame, do something with it
             }
             break;
-        }
-        else 
+        } else
 #endif
-        if (buf[0]==0x00 && buf[1]==0x00 && buf[2]==0x00 && buf[3]==0x01) {
-            // Found a NAL unit with 4-byte startcode
-            if(buf[4] & 0x1F == 0x5) {
-                // Found a reference frame, do something with it
+            if (buf[0] == 0x00 && buf[1] == 0x00 && buf[2] == 0x00 && buf[3] == 0x01) {
+                // Found a NAL unit with 4-byte startcode
+                if (buf[4] & 0x1F == 0x5) {
+                    // Found a reference frame, do something with it
+                }
+                break;
             }
-            break;
-        }
         buf++;
         total--;
     }
 
-    if(total <= 4)
+    if (total <= 4) {
         return NULL;
+    }
     return buf;
 }
 
@@ -202,8 +204,8 @@ PARSE_BEGIN:
     }
     vbuf_off = nal + 3;
     if (nal[4] == 0x67)  {
-        
-        if(handle->video_config_ok == 1) {
+
+        if (handle->video_config_ok == 1) {
             log_print(TAG, "I frame configured \n");
             //return -1;
         }
@@ -276,12 +278,13 @@ PARSE_BEGIN:
         goto PARSE_BEGIN;
     } else if (nal[4] == 0x65) {
         nal_len = vbuf_end - nal - 4;
-        log_print(TAG, "nal len:%d \n", nal_len); 
+        log_print(TAG, "nal len:%d \n", nal_len);
         body_len = nal_len + 5 + 4; //flv VideoTagHeader +  NALU length
         output_len = body_len + FLV_TAG_HEAD_LEN + FLV_PRE_TAG_LEN;
-        output =(uint8_t *)malloc(output_len);
-        if (!output)
+        output = (uint8_t *)malloc(output_len);
+        if (!output) {
             return -1;
+        }
 
         // FLV TAG HEADER
         output[offset++] = 0x09; //tagtype video
@@ -331,14 +334,15 @@ end:
     out->dts = in->dts;
     out->size = frame_len + sps_len;
     out->data = (uint8_t *)malloc(out->size);
-    if(!out->data)
+    if (!out->data) {
         return -1;
+    }
 
-    if(sps_len > 0) {
+    if (sps_len > 0) {
         memcpy(out->data, sps_buf, sps_len);
         free(sps_buf);
     }
-    if(frame_len > 0) {
+    if (frame_len > 0) {
         memcpy(out->data + sps_len, frame_buf, frame_len);
         free(frame_buf);
     }
@@ -348,8 +352,9 @@ end:
 
 int flvmux_close(struct flvmux_context *handle)
 {
-    if(handle)
+    if (handle) {
         free(handle);
+    }
     return 0;
 }
 

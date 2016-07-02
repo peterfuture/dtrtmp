@@ -27,24 +27,24 @@
 #define RTMP_LIVE_ADDR "rtmp://127.0.0.1:1935/live/test"
 #define VIDEO_SIZE 3 *1024 *1024
 #define AUDIO_SIZE 1 *1024 *1024
-static uint32_t find_start_code(uint8_t *buf, uint32_t zeros_in_startcode)   
-{   
-  uint32_t info;   
-  uint32_t i;   
-   
-  info = 1;   
-  if ((info = (buf[zeros_in_startcode] != 1)? 0: 1) == 0)   
-      return 0;   
-       
-  for (i = 0; i < zeros_in_startcode; i++)   
-    if (buf[i] != 0)   
-    { 
-        info = 0;
-        break;
-    };   
-     
-  return info;   
-}   
+static uint32_t find_start_code(uint8_t *buf, uint32_t zeros_in_startcode)
+{
+    uint32_t info;
+    uint32_t i;
+
+    info = 1;
+    if ((info = (buf[zeros_in_startcode] != 1) ? 0 : 1) == 0) {
+        return 0;
+    }
+
+    for (i = 0; i < zeros_in_startcode; i++)
+        if (buf[i] != 0) {
+            info = 0;
+            break;
+        };
+
+    return info;
+}
 
 uint8_t * get_nal(uint32_t *len, uint8_t **offset, uint8_t *start, uint32_t total)
 {
@@ -53,25 +53,29 @@ uint8_t * get_nal(uint32_t *len, uint8_t **offset, uint8_t *start, uint32_t tota
     uint8_t *p  =  *offset;
     *len = 0;
 
-    while(1) {
+    while (1) {
         info =  find_start_code(p, 3);
-        if (info == 1)
+        if (info == 1) {
             break;
+        }
         p++;
-        if ((p - start) >= total)
+        if ((p - start) >= total) {
             return NULL;
+        }
     }
     q = p + 4;
     p = q;
-    while(1) {
+    while (1) {
         info =  find_start_code(p, 3);
-        if (info == 1)
+        if (info == 1) {
             break;
+        }
         p++;
-        if ((p - start) >= total)
+        if ((p - start) >= total) {
             return NULL;
+        }
     }
-    
+
     *len = (p - q);
     *offset = p;
     return q;
@@ -81,31 +85,31 @@ uint8_t *h264_find_NAL(uint8_t *buffer, uint32_t total)
 {
     uint8_t *buf = buffer;
     //log_print(TAG, "Total:%u %02x %02x %02x %02x\n", total, buf[0], buf[1], buf[2], buf[3]);
-    while(total > 4){
+    while (total > 4) {
 #if 0
-        if (buf[0]==0x00 && buf[1]==0x00 && buf[2]==0x01) {
+        if (buf[0] == 0x00 && buf[1] == 0x00 && buf[2] == 0x01) {
             // Found a NAL unit with 3-byte startcode
-            if(buf[3] & 0x1F == 0x5) {
+            if (buf[3] & 0x1F == 0x5) {
                 // Found a reference frame, do something with it
             }
             buf += 3;
             break;
-        }
-        else 
+        } else
 #endif
-        if (buf[0]==0x00 && buf[1]==0x00 && buf[2]==0x00 && buf[3]==0x01) {
-            // Found a NAL unit with 4-byte startcode
-            if(buf[4] & 0x1F == 0x5) {
-                // Found a reference frame, do something with it
+            if (buf[0] == 0x00 && buf[1] == 0x00 && buf[2] == 0x00 && buf[3] == 0x01) {
+                // Found a NAL unit with 4-byte startcode
+                if (buf[4] & 0x1F == 0x5) {
+                    // Found a reference frame, do something with it
+                }
+                break;
             }
-            break;
-        }
         buf++;
         total--;
     }
 
-    if(total <= 4)
+    if (total <= 4) {
         return NULL;
+    }
     return buf;
 }
 
@@ -118,22 +122,25 @@ int main()
     rtmp_para.write_enable = 1;
     strcpy(rtmp_para.uri, RTMP_LIVE_ADDR);
     struct rtmp_context *rtmp_handle = rtmp_open(&rtmp_para);
-    if(!rtmp_handle)
+    if (!rtmp_handle) {
         return -1;
+    }
 
     struct flvmux_para flv_para;
     memset(&flv_para, 0, sizeof(struct flvmux_para));
     flv_para.has_audio = audio_support;
     flv_para.has_video = video_support;
     struct flvmux_context *flv_handle = flvmux_open(&flv_para);
-    if(!flv_handle)
+    if (!flv_handle) {
         return -1;
+    }
 
     int ret;
     // First Send FLV Header
     ret = rtmp_write(rtmp_handle, flv_handle->header, flv_handle->header_size);
-    if(ret < 0)
+    if (ret < 0) {
         return -1;
+    }
     log_print(TAG, "Header send ok. ret:%d \n", ret);
 
     int fd_264 = open("raw_video.out", O_RDONLY);
@@ -160,27 +167,28 @@ int main()
     uint32_t nal_len, nal_pps_len, nal_frame_len;
 
     // parse av packet & send rtmp packet
-    while(1) {
+    while (1) {
         // process one audio frame
-        if(!audio_support) {
+        if (!audio_support) {
             goto video_process;
         }
 
 video_process:
         // process one video frame
-        if(!video_support)
+        if (!video_support) {
             goto end;
+        }
 
         //nal = get_nal(&nal_len, &vbuf_off, vbuf_start, total_264);
-        nal = h264_find_NAL(vbuf_off, vbuf_start + total_264 -vbuf_off);
+        nal = h264_find_NAL(vbuf_off, vbuf_start + total_264 - vbuf_off);
         if (nal == NULL) {
             log_print(TAG, "not found nal \n");
             goto end;
         }
         vbuf_off = nal + 3;
-        if(nal[4] == 0x67) {
+        if (nal[4] == 0x67) {
             //nal_sps = get_nal(&nal_sps_len, &vbuf_off, vbuf_start, total_264);
-            nal_pps = h264_find_NAL(vbuf_off, vbuf_start + total_264 -vbuf_off);
+            nal_pps = h264_find_NAL(vbuf_off, vbuf_start + total_264 - vbuf_off);
             nal_len = nal_pps - nal - 4;
             log_print(TAG, "nal: %02x %d pos:%d\n", nal[4], nal_len, nal - vbuf_start);
             vbuf_off = nal_pps + 3;
@@ -202,7 +210,7 @@ video_process:
             in.data = nal;
             in.size = packet_size;
             ret = flvmux_setup_video_frame(flv_handle, &in, &out);
-            if(ret > 0) {
+            if (ret > 0) {
                 log_print(TAG, "Start send data :%d\n", out.size);
                 ret = rtmp_write(rtmp_handle, out.data, ret);
             }
@@ -220,10 +228,10 @@ video_process:
             in.data = nal;
             in.size = packet_size;
             ret = flvmux_setup_video_frame(flv_handle, &in, &out);
-            if(ret > 0) {
+            if (ret > 0) {
                 ret = rtmp_write(rtmp_handle, out.data, ret);
             }
- 
+
         }
 end:
         usleep(1000000);
