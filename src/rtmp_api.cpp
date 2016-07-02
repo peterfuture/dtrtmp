@@ -63,7 +63,14 @@ int rtmp_read(struct rtmp_context *handle, uint8_t *data, int size)
 
 int rtmp_write(struct rtmp_context *handle, uint8_t *data, int size)
 {
-    return RTMP_Write((struct RTMP*)handle->rtmp, (char *)data, size);
+    int ret = 0;
+    int wlen = 0;
+    while(wlen < size) {
+        ret = RTMP_Write((struct RTMP*)handle->rtmp, (char *)(data + wlen), size - wlen);
+        if(ret > 0)
+            wlen += ret;
+    }
+    return wlen;
 }
 
 int rtmp_pause(struct rtmp_context *handle, int time)

@@ -153,7 +153,12 @@ int main()
     close(fd_aac);
 
     log_print(TAG, "audio size:%u video size:%u \n", total_aac, total_264);
-
+#if 0
+    ret = rtmp_write(rtmp_handle, buf_264, total_264);
+    ret = rtmp_write(rtmp_handle, buf_aac, total_aac);
+    log_print(TAG, "send audio size:%u video size:%u \n", total_aac, total_264);
+    return 0;
+#endif
     uint8_t *abuf_start = buf_aac;
     uint8_t *abuf_end = buf_aac + total_aac;
     uint8_t *abuf_cur = buf_aac;
@@ -209,10 +214,12 @@ video_process:
             memset(&out, 0, sizeof(struct flvmux_packet));
             in.data = nal;
             in.size = packet_size;
+                
             ret = flvmux_setup_video_frame(flv_handle, &in, &out);
             if (ret > 0) {
-                log_print(TAG, "Start send data :%d\n", out.size);
-                ret = rtmp_write(rtmp_handle, out.data, ret);
+                log_print(TAG, "Start send data :%d %02x %02x %02x %02x %02x\n", ret, out.data[0], out.data[1], out.data[2], out.data[out.size -1], out.data[out.size - 2]);
+                ret = rtmp_write(rtmp_handle, out.data, (int)out.size);
+                free(out.data);
             }
         } else {
             nal_next = h264_find_NAL(vbuf_off, vbuf_start + total_264 - vbuf_off);
@@ -229,6 +236,7 @@ video_process:
             in.size = packet_size;
             ret = flvmux_setup_video_frame(flv_handle, &in, &out);
             if (ret > 0) {
+                log_print(TAG, "Start send data :%d %02x %02x %02x %02x %02x\n", ret, out.data[0], out.data[1], out.data[2], out.data[out.size -1], out.data[out.size - 2]);
                 ret = rtmp_write(rtmp_handle, out.data, ret);
             }
 

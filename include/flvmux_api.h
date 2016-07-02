@@ -23,7 +23,7 @@
 
 struct flvmux_packet {
     uint8_t *data;
-    int size;
+    uint32_t size;
     int64_t pts;
     int64_t dts;
 };

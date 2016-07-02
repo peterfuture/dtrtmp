@@ -182,7 +182,6 @@ int flvmux_setup_video_frame(struct flvmux_context *handle, struct flvmux_packet
     uint32_t total_264 = (uint32_t)in->size;
     uint8_t *vbuf_start = buf_264;
     uint8_t *vbuf_end = buf_264 + total_264;
-    uint8_t *vbuf_cur = buf_264;
     uint8_t *vbuf_off = buf_264;
 
     uint8_t *nal, *nal_pps, *nal_frame, *nal_next;
@@ -195,14 +194,16 @@ int flvmux_setup_video_frame(struct flvmux_context *handle, struct flvmux_packet
     uint32_t ts = (uint32_t)in->pts;
     uint32_t offset = 0;
 
+    log_print(TAG, "Total Pakcet size:%u \n", total_264);
 PARSE_BEGIN:
     // Find Nal. Maybe SPS
+    offset = 0;
     log_print(TAG, "Curpos:%d %02x %02x %02x %02x %02x\n", vbuf_off - vbuf_start, vbuf_off[0], vbuf_off[1], vbuf_off[2], vbuf_off[3], vbuf_off[4]);
     nal = h264_find_NAL(vbuf_off, vbuf_start + total_264 - vbuf_off);
     if (nal == NULL) {
         goto end;
     }
-    vbuf_off = nal + 3;
+    vbuf_off = nal + 4;
     if (nal[4] == 0x67)  {
 
         if (handle->video_config_ok == 1) {
@@ -213,7 +214,7 @@ PARSE_BEGIN:
         nal_pps = h264_find_NAL(vbuf_off, vbuf_start + total_264 - vbuf_off);
         nal_len = nal_pps - nal - 4;
         log_print(TAG, "nal: %02x %d pos:%d\n", nal[4], nal_len, nal - vbuf_start);
-        vbuf_off = nal_pps + 3;
+        vbuf_off = nal_pps + 4;
         nal_frame = h264_find_NAL(vbuf_off, vbuf_start + total_264 - vbuf_off);
         nal_pps_len = nal_frame - nal_pps - 4;
         log_print(TAG, "pps: %02x %d pos:%d \n", nal_pps[4], nal_pps_len, nal_pps - vbuf_start);
@@ -310,7 +311,7 @@ PARSE_BEGIN:
         output[offset++] = (uint8_t)(nal_len >> 16); //nal length
         output[offset++] = (uint8_t)(nal_len >> 8); //nal length
         output[offset++] = (uint8_t)(nal_len); //nal length
-        memcpy(output + offset, nal, nal_len);
+        memcpy(output + offset, nal + 4, nal_len);
 
         offset += nal_len;
         uint32_t fff = body_len + FLV_TAG_HEAD_LEN;
@@ -332,8 +333,8 @@ PARSE_BEGIN:
 end:
     out->pts = in->pts;
     out->dts = in->dts;
-    out->size = frame_len + sps_len;
-    out->data = (uint8_t *)malloc(out->size);
+    out->size = (uint32_t)(frame_len + sps_len);
+    out->data = (uint8_t *)malloc(out->size + 32);
     if (!out->data) {
         return -1;
     }
@@ -346,8 +347,8 @@ end:
         memcpy(out->data + sps_len, frame_buf, frame_len);
         free(frame_buf);
     }
-    log_print(TAG, "sps:%d frame:%d \n", sps_len, frame_len);
-    return out->size;
+    log_print(TAG, "sps:%d frame:%d %u out sp:%p\n", sps_len, frame_len, out->size, out->data);
+    return (int)out->size;
 }
 
 int flvmux_close(struct flvmux_context *handle)
