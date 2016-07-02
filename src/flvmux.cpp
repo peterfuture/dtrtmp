@@ -148,7 +148,6 @@ static uint8_t *h264_find_NAL(uint8_t *buffer, int total)
             if(buf[3] & 0x1F == 0x5) {
                 // Found a reference frame, do something with it
             }
-            buf += 3;
             break;
         }
         else 
@@ -158,7 +157,6 @@ static uint8_t *h264_find_NAL(uint8_t *buffer, int total)
             if(buf[4] & 0x1F == 0x5) {
                 // Found a reference frame, do something with it
             }
-            buf += 4;
             break;
         }
         buf++;
@@ -173,52 +171,55 @@ static uint8_t *h264_find_NAL(uint8_t *buffer, int total)
 // Complete Frame Process
 int flvmux_setup_video_frame(struct flvmux_context *handle, struct flvmux_packet *in, struct flvmux_packet *out)
 {
-    uint8_t * buf;
-    uint8_t * buf_offset;
-    int val = 0;
-    int total;
-    uint32_t ts;
-    uint32_t nal_len;
-    uint32_t nal_len_n;
-    uint8_t *nal;
-    uint8_t *nal_n;
-    char *output ;
-    uint32_t offset = 0;
+    int sps_len = 0;
+    uint8_t *sps_buf = NULL;
+    int frame_len = 0;
+    uint8_t *frame_buf = NULL;
+
+    uint8_t *buf_264 = (uint8_t *)in->data;
+    uint32_t total_264 = (uint32_t)in->size;
+    uint8_t *vbuf_start = buf_264;
+    uint8_t *vbuf_end = buf_264 + total_264;
+    uint8_t *vbuf_cur = buf_264;
+    uint8_t *vbuf_off = buf_264;
+
+    uint8_t *nal, *nal_pps, *nal_frame, *nal_next;
+    uint32_t nal_len, nal_pps_len, nal_frame_len;
+
+    uint8_t *output = NULL;
     uint32_t body_len;
     uint32_t output_len;
-    
-    buf = in->data;
-    buf_offset = in->data;
-    total = in->size;
-    ts = (uint32_t)in->dts;
-    offset = 0;
 
-    nal = h264_find_NAL(buf, total);
+    uint32_t ts = (uint32_t)in->pts;
+    uint32_t offset = 0;
+
+PARSE_BEGIN:
+    // Find Nal. Maybe SPS
+    log_print(TAG, "Curpos:%d %02x %02x %02x %02x %02x\n", vbuf_off - vbuf_start, vbuf_off[0], vbuf_off[1], vbuf_off[2], vbuf_off[3], vbuf_off[4]);
+    nal = h264_find_NAL(vbuf_off, vbuf_start + total_264 - vbuf_off);
     if (nal == NULL) {
-        log_print(TAG, "Nal Not Found, Skip this frame \n");
-        return -1;
+        goto end;
     }
-    if (nal[0] == 0x67)  {
+    vbuf_off = nal + 3;
+    if (nal[4] == 0x67)  {
         
         if(handle->video_config_ok == 1) {
             log_print(TAG, "I frame configured \n");
             //return -1;
         }
 
-        //nal_n  = get_nal(&nal_len_n, &buf_offset, buf, total); //get pps
-        nal_n = h264_find_NAL(nal, total - (nal - buf));
-        if (nal_n == NULL) {
-            log_print(TAG, "Not Found pps \n");
-            return -1;
-        }
+        nal_pps = h264_find_NAL(vbuf_off, vbuf_start + total_264 - vbuf_off);
+        nal_len = nal_pps - nal - 4;
+        log_print(TAG, "nal: %02x %d pos:%d\n", nal[4], nal_len, nal - vbuf_start);
+        vbuf_off = nal_pps + 3;
+        nal_frame = h264_find_NAL(vbuf_off, vbuf_start + total_264 - vbuf_off);
+        nal_pps_len = nal_frame - nal_pps - 4;
+        log_print(TAG, "pps: %02x %d pos:%d \n", nal_pps[4], nal_pps_len, nal_pps - vbuf_start);
+        vbuf_off = nal_frame;
 
-        nal_len = nal_n - nal - 4;
-        nal_len_n = buf + total - nal_n; 
-            
-        log_print(TAG, "Found pps \n");
-        body_len = nal_len + nal_len_n + 16;
+        body_len = nal_len + nal_pps_len + 16;
         output_len = body_len + FLV_TAG_HEAD_LEN + FLV_PRE_TAG_LEN;
-        output = (char *)malloc(output_len);
+        output = (uint8_t *)malloc(output_len);
 
         // FLV TAG HEADER
         output[offset++] = 0x09; //tagtype video
@@ -249,29 +250,36 @@ int flvmux_setup_video_frame(struct flvmux_context *handle, struct flvmux_packet
         output[offset++] = 0xe1; //numofsequenceset
         output[offset++] = (uint8_t)(nal_len >> 8); //sequence parameter set length high 8 bits
         output[offset++] = (uint8_t)(nal_len); //sequence parameter set  length low 8 bits
-        memcpy(output + offset, nal, nal_len); //H264 sequence parameter set
+        memcpy(output + offset, nal + 4, nal_len); //H264 sequence parameter set
         offset += nal_len;
         output[offset++] = 0x01; //numofpictureset
-        output[offset++] = (uint8_t)(nal_len_n >> 8); //picture parameter set length high 8 bits
-        output[offset++] = (uint8_t)(nal_len_n); //picture parameter set length low 8 bits
-        memcpy(output + offset, nal_n, nal_len_n); //H264 picture parameter set
+        output[offset++] = (uint8_t)(nal_pps_len >> 8); //picture parameter set length high 8 bits
+        output[offset++] = (uint8_t)(nal_pps_len); //picture parameter set length low 8 bits
+        memcpy(output + offset, nal_pps + 4, nal_pps_len); //H264 picture parameter set
 
-        offset += nal_len_n;
+        offset += nal_pps_len;
         uint32_t fff = body_len + FLV_TAG_HEAD_LEN;
         output[offset++] = (uint8_t)(fff >> 24); //data len
         output[offset++] = (uint8_t)(fff >> 16); //data len
         output[offset++] = (uint8_t)(fff >> 8); //data len
         output[offset++] = (uint8_t)(fff); //data len
 
+        sps_len = output_len;
+        sps_buf = output;
+#if 0
         out->size = output_len;
         out->data = (uint8_t *)malloc(output_len);
         memcpy(out->data, output, output_len);
         free(output);
+#endif
         handle->video_config_ok = 1;
-    } else if (nal[0] == 0x65) {
+        goto PARSE_BEGIN;
+    } else if (nal[4] == 0x65) {
+        nal_len = vbuf_end - nal - 4;
+        log_print(TAG, "nal len:%d \n", nal_len); 
         body_len = nal_len + 5 + 4; //flv VideoTagHeader +  NALU length
         output_len = body_len + FLV_TAG_HEAD_LEN + FLV_PRE_TAG_LEN;
-        output =(char *)malloc(output_len);
+        output =(uint8_t *)malloc(output_len);
         if (!output)
             return -1;
 
@@ -308,16 +316,34 @@ int flvmux_setup_video_frame(struct flvmux_context *handle, struct flvmux_packet
         output[offset++] = (uint8_t)(fff >> 8); //data len
         output[offset++] = (uint8_t)(fff); //data len
 
+        frame_len = output_len;
+        frame_buf = output;
+#if 0
         out->size = output_len;
         out->data = (uint8_t *)malloc(output_len);
         memcpy(out->data, output, output_len);
         free(output);
+#endif
     }
 
+end:
     out->pts = in->pts;
     out->dts = in->dts;
-    
-    return output_len;
+    out->size = frame_len + sps_len;
+    out->data = (uint8_t *)malloc(out->size);
+    if(!out->data)
+        return -1;
+
+    if(sps_len > 0) {
+        memcpy(out->data, sps_buf, sps_len);
+        free(sps_buf);
+    }
+    if(frame_len > 0) {
+        memcpy(out->data + sps_len, frame_buf, frame_len);
+        free(frame_buf);
+    }
+    log_print(TAG, "sps:%d frame:%d \n", sps_len, frame_len);
+    return out->size;
 }
 
 int flvmux_close(struct flvmux_context *handle)

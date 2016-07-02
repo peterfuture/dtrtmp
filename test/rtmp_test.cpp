@@ -172,8 +172,9 @@ video_process:
             goto end;
 
         //nal = get_nal(&nal_len, &vbuf_off, vbuf_start, total_264);
-        nal = h264_find_NAL(vbuf_off, total_264);
+        nal = h264_find_NAL(vbuf_off, vbuf_start + total_264 -vbuf_off);
         if (nal == NULL) {
+            log_print(TAG, "not found nal \n");
             goto end;
         }
         vbuf_off = nal + 3;
@@ -200,16 +201,38 @@ video_process:
             memset(&out, 0, sizeof(struct flvmux_packet));
             in.data = nal;
             in.size = packet_size;
-            flvmux_setup_video_frame(flv_handle, in, out);
+            ret = flvmux_setup_video_frame(flv_handle, &in, &out);
+            if(ret > 0) {
+                log_print(TAG, "Start send data :%d\n", out.size);
+                ret = rtmp_write(rtmp_handle, out.data, ret);
+            }
+        } else {
+            nal_next = h264_find_NAL(vbuf_off, vbuf_start + total_264 - vbuf_off);
+            nal_frame_len = nal_next - nal - 4;
+            vbuf_off = nal_next;
 
+            int packet_size = nal_frame_len + 4;
+            log_print(TAG, "packetsize: %d\n", packet_size);
+
+            struct flvmux_packet in, out;
+            memset(&in, 0, sizeof(struct flvmux_packet));
+            memset(&out, 0, sizeof(struct flvmux_packet));
+            in.data = nal;
+            in.size = packet_size;
+            ret = flvmux_setup_video_frame(flv_handle, &in, &out);
+            if(ret > 0) {
+                ret = rtmp_write(rtmp_handle, out.data, ret);
+            }
+ 
         }
 end:
+        usleep(1000000);
         continue;
-        break;
     }
 
 
 Finish:
+    log_print(TAG, "quit \n");
     rtmp_close(rtmp_handle);
     flvmux_close(flv_handle);
     free(buf_264);
