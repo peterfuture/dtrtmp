@@ -77,15 +77,19 @@ struct flvmux_context *flvmux_open(struct flvmux_para *para)
     uint32_t body_len;
     uint32_t offset = 0;
     uint32_t output_len;
-    char buffer[48];
+    char buffer[512];
     char *output = buffer;
     char *outend = buffer + sizeof(buffer);
     char send_buffer[512];
 
     output = AMF_EncodeString(output, outend, &av_onMetaData);
     *output++ = AMF_ECMA_ARRAY;
-    output = AMF_EncodeInt32(output, outend, 1);
+    output = AMF_EncodeInt32(output, outend, 3);
     output = AMF_EncodeNamedNumber(output, outend, &av_duration, 0.0);
+    output = AMF_EncodeNamedNumber(output, outend, &av_videocodecid, 7);
+    output = AMF_EncodeNamedNumber(output, outend, &av_audiocodecid, 10);
+    output = AMF_EncodeInt24(output, outend, AMF_OBJECT_END);
+
     body_len = output - buffer;
     output_len = body_len + FLV_TAG_HEAD_LEN + FLV_PRE_TAG_LEN;
     send_buffer[offset++] = 0x12; //tagtype scripte
@@ -277,7 +281,7 @@ PARSE_BEGIN:
 #endif
         handle->video_config_ok = 1;
         goto PARSE_BEGIN;
-    } else if (nal[4] == 0x65) {
+    } else if (nal[4] == 0x65 || (nal[4] & 0x1f) == 0x01) {
         nal_len = vbuf_end - nal - 4;
         log_print(TAG, "nal len:%d \n", nal_len);
         body_len = nal_len + 5 + 4; //flv VideoTagHeader +  NALU length
@@ -301,7 +305,10 @@ PARSE_BEGIN:
         output[offset++] = 0x00; //stream id 0
 
         //FLV VideoTagHeader
-        output[offset++] = 0x17; //key frame, AVC
+        if(nal[4] == 0x065)
+            output[offset++] = 0x17; //key frame, AVC
+        else
+            output[offset++] = 0x27; //not key frame, AVC
         output[offset++] = 0x01; //avc sequence header
         output[offset++] = 0x00; //composit time
         output[offset++] = 0x00; // composit time

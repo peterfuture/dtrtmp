@@ -84,29 +84,19 @@ uint8_t * get_nal(uint32_t *len, uint8_t **offset, uint8_t *start, uint32_t tota
 uint8_t *h264_find_NAL(uint8_t *buffer, uint32_t total)
 {
     uint8_t *buf = buffer;
-    //log_print(TAG, "Total:%u %02x %02x %02x %02x\n", total, buf[0], buf[1], buf[2], buf[3]);
+    log_print(TAG, "Total:%u %02x %02x %02x %02x\n", total, buf[0], buf[1], buf[2], buf[3]);
     while (total > 4) {
-#if 0
-        if (buf[0] == 0x00 && buf[1] == 0x00 && buf[2] == 0x01) {
-            // Found a NAL unit with 3-byte startcode
-            if (buf[3] & 0x1F == 0x5) {
+        if (buf[0] == 0x00 && buf[1] == 0x00 && buf[2] == 0x00 && buf[3] == 0x01) {
+            // Found a NAL unit with 4-byte startcode
+            if (buf[4] & 0x1F == 0x5) {
                 // Found a reference frame, do something with it
             }
-            buf += 3;
             break;
-        } else
-#endif
-            if (buf[0] == 0x00 && buf[1] == 0x00 && buf[2] == 0x00 && buf[3] == 0x01) {
-                // Found a NAL unit with 4-byte startcode
-                if (buf[4] & 0x1F == 0x5) {
-                    // Found a reference frame, do something with it
-                }
-                break;
-            }
+
+        }
         buf++;
         total--;
     }
-
     if (total <= 4) {
         return NULL;
     }
@@ -115,6 +105,7 @@ uint8_t *h264_find_NAL(uint8_t *buffer, uint32_t total)
 
 int main()
 {
+    int ret;
     int audio_support = 0;
     int video_support = 1;
     struct rtmp_para rtmp_para;
@@ -125,6 +116,7 @@ int main()
     if (!rtmp_handle) {
         return -1;
     }
+    log_print(TAG, "[%s:%d] Trace\n", __FUNCTION__, __LINE__);
 
     struct flvmux_para flv_para;
     memset(&flv_para, 0, sizeof(struct flvmux_para));
@@ -134,8 +126,8 @@ int main()
     if (!flv_handle) {
         return -1;
     }
+    log_print(TAG, "[%s:%d] Trace\n", __FUNCTION__, __LINE__);
 
-    int ret;
     // First Send FLV Header
     ret = rtmp_write(rtmp_handle, flv_handle->header, flv_handle->header_size);
     if (ret < 0) {
@@ -143,11 +135,11 @@ int main()
     }
     log_print(TAG, "Header send ok. ret:%d \n", ret);
 
-    int fd_264 = open("raw_video.out", O_RDONLY);
+    int fd_264 = open("out.264", O_RDONLY);
     uint8_t * buf_264 = (uint8_t *)malloc(VIDEO_SIZE);
     uint32_t total_264 = read(fd_264, buf_264, (VIDEO_SIZE));
     close(fd_264);
-    int fd_aac = open("raw_audio.out", O_RDONLY);
+    int fd_aac = open("out.aac", O_RDONLY);
     uint8_t * buf_aac = (uint8_t *)malloc(AUDIO_SIZE);
     uint32_t total_aac = read(fd_aac, buf_aac, (AUDIO_SIZE));
     close(fd_aac);
@@ -190,7 +182,7 @@ video_process:
             log_print(TAG, "not found nal \n");
             goto end;
         }
-        vbuf_off = nal + 3;
+        vbuf_off = nal + 4;
         if (nal[4] == 0x67) {
             //nal_sps = get_nal(&nal_sps_len, &vbuf_off, vbuf_start, total_264);
             nal_pps = h264_find_NAL(vbuf_off, vbuf_start + total_264 - vbuf_off);

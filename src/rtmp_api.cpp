@@ -18,6 +18,9 @@
 #include "rtmp_api.h"
 #include "flvmux_api.h"
 
+#include "log_print.h"
+#define TAG "RTMP"
+
 struct rtmp_context *rtmp_open(struct rtmp_para *para)
 {
     struct rtmp_context *handle = (struct rtmp_context *)malloc(sizeof(struct rtmp_context));
@@ -53,6 +56,7 @@ fail:
 
     RTMP_Free(rtmp);
     free(handle);
+    log_print(TAG, "Rtmp open ok\n");
     return NULL;
 }
 
