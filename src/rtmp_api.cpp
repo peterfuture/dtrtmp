@@ -51,12 +51,13 @@ struct rtmp_context *rtmp_open(struct rtmp_para *para)
         goto fail;
     }
     handle->rtmp = (void *)rtmp;
+    log_print(TAG, "Rtmp open fail\n");
     return handle;
 fail:
 
     RTMP_Free(rtmp);
     free(handle);
-    log_print(TAG, "Rtmp open ok\n");
+    log_print(TAG, "Rtmp open fail\n");
     return NULL;
 }
 

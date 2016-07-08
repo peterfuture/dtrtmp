@@ -144,26 +144,26 @@ static uint8_t *h264_find_IDR_frame(char *buffer, int total)
     return buf;
 }
 
-static uint8_t *h264_find_NAL(uint8_t *buffer, int total)
+static uint8_t *h264_find_NAL(uint8_t *buffer, int total, int *startcode_len)
 {
     uint8_t *buf = (uint8_t *)buffer;
     while (total > 4) {
-#if 0
+        
         if (buf[0] == 0x00 && buf[1] == 0x00 && buf[2] == 0x01) {
             // Found a NAL unit with 3-byte startcode
             if (buf[3] & 0x1F == 0x5) {
                 // Found a reference frame, do something with it
             }
+            *startcode_len = 3;
             break;
-        } else
-#endif
-            if (buf[0] == 0x00 && buf[1] == 0x00 && buf[2] == 0x00 && buf[3] == 0x01) {
-                // Found a NAL unit with 4-byte startcode
-                if (buf[4] & 0x1F == 0x5) {
-                    // Found a reference frame, do something with it
-                }
-                break;
+        } else if (buf[0] == 0x00 && buf[1] == 0x00 && buf[2] == 0x00 && buf[3] == 0x01) {
+            // Found a NAL unit with 4-byte startcode
+            if (buf[4] & 0x1F == 0x5) {
+                // Found a reference frame, do something with it
             }
+            *startcode_len = 4;
+            break;
+        }
         buf++;
         total--;
     }
@@ -198,30 +198,33 @@ int flvmux_setup_video_frame(struct flvmux_context *handle, struct flvmux_packet
     uint32_t ts = (uint32_t)in->pts;
     uint32_t offset = 0;
 
+    int startcode_len = 0;
+
     log_print(TAG, "Total Pakcet size:%u \n", total_264);
 PARSE_BEGIN:
     // Find Nal. Maybe SPS
     offset = 0;
-    //log_print(TAG, "Curpos:%d %02x %02x %02x %02x %02x\n", vbuf_off - vbuf_start, vbuf_off[0], vbuf_off[1], vbuf_off[2], vbuf_off[3], vbuf_off[4]);
-    nal = h264_find_NAL(vbuf_off, vbuf_start + total_264 - vbuf_off);
+    log_print(TAG, "Curpos:%d %02x %02x %02x %02x %02x\n", vbuf_off - vbuf_start, vbuf_off[0], vbuf_off[1], vbuf_off[2], vbuf_off[3], vbuf_off[4]);
+    nal = h264_find_NAL(vbuf_off, vbuf_start + total_264 - vbuf_off, &startcode_len);
     if (nal == NULL) {
         goto end;
     }
-    vbuf_off = nal + 4;
-    if (nal[4] == 0x67)  {
+
+    vbuf_off = nal + startcode_len;
+    if (nal[startcode_len] == 0x67)  {
 
         if (handle->video_config_ok == 1) {
             log_print(TAG, "I frame configured \n");
             //return -1;
         }
 
-        nal_pps = h264_find_NAL(vbuf_off, vbuf_start + total_264 - vbuf_off);
+        nal_pps = h264_find_NAL(vbuf_off, vbuf_start + total_264 - vbuf_off, &startcode_len);
         nal_len = nal_pps - nal - 4;
-        //log_print(TAG, "nal: %02x %d pos:%d\n", nal[4], nal_len, nal - vbuf_start);
-        vbuf_off = nal_pps + 4;
-        nal_frame = h264_find_NAL(vbuf_off, vbuf_start + total_264 - vbuf_off);
+        log_print(TAG, "nal: %02x %d pos:%d\n", nal[4], nal_len, nal - vbuf_start);
+        vbuf_off = nal_pps + startcode_len;
+        nal_frame = h264_find_NAL(vbuf_off, vbuf_start + total_264 - vbuf_off, &startcode_len);
         nal_pps_len = nal_frame - nal_pps - 4;
-        //log_print(TAG, "pps: %02x %d pos:%d \n", nal_pps[4], nal_pps_len, nal_pps - vbuf_start);
+        log_print(TAG, "pps: %02x %d pos:%d \n", nal_pps[4], nal_pps_len, nal_pps - vbuf_start);
         vbuf_off = nal_frame;
 
         body_len = nal_len + nal_pps_len + 16;
@@ -281,8 +284,8 @@ PARSE_BEGIN:
 #endif
         handle->video_config_ok = 1;
         goto PARSE_BEGIN;
-    } else if (nal[4] == 0x65 || (nal[4] & 0x1f) == 0x01) {
-        nal_len = vbuf_end - nal - 4;
+    } else if (nal[startcode_len] == 0x65 || (nal[startcode_len] & 0x1f) == 0x01) {
+        nal_len = vbuf_end - nal - startcode_len;
         //log_print(TAG, "nal len:%d \n", nal_len);
         body_len = nal_len + 5 + 4; //flv VideoTagHeader +  NALU length
         output_len = body_len + FLV_TAG_HEAD_LEN + FLV_PRE_TAG_LEN;
@@ -305,8 +308,10 @@ PARSE_BEGIN:
         output[offset++] = 0x00; //stream id 0
 
         //FLV VideoTagHeader
-        if(nal[4] == 0x065)
+        if(nal[startcode_len] == 0x065) {
             output[offset++] = 0x17; //key frame, AVC
+            log_print(TAG, "Key frame \n");
+        }
         else
             output[offset++] = 0x27; //not key frame, AVC
         output[offset++] = 0x01; //avc sequence header
@@ -318,7 +323,7 @@ PARSE_BEGIN:
         output[offset++] = (uint8_t)(nal_len >> 16); //nal length
         output[offset++] = (uint8_t)(nal_len >> 8); //nal length
         output[offset++] = (uint8_t)(nal_len); //nal length
-        memcpy(output + offset, nal + 4, nal_len);
+        memcpy(output + offset, nal + startcode_len, nal_len);
 
         offset += nal_len;
         uint32_t fff = body_len + FLV_TAG_HEAD_LEN;
@@ -341,7 +346,7 @@ end:
     out->pts = in->pts;
     out->dts = in->dts;
     out->size = (uint32_t)(frame_len + sps_len);
-    out->data = (uint8_t *)malloc(out->size + 32);
+    out->data = (uint8_t *)malloc(out->size);
     if (!out->data) {
         return -1;
     }
@@ -354,7 +359,7 @@ end:
         memcpy(out->data + sps_len, frame_buf, frame_len);
         free(frame_buf);
     }
-    //log_print(TAG, "sps:%d frame:%d %u out sp:%p\n", sps_len, frame_len, out->size, out->data);
+    log_print(TAG, "sps:%d frame:%d %u out sp:%p\n", sps_len, frame_len, out->size, out->data);
     return (int)out->size;
 }
 
