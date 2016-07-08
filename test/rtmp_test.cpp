@@ -25,7 +25,7 @@
 
 // Red5 RTMP Server
 #define RTMP_LIVE_ADDR "rtmp://127.0.0.1:1935/live/test"
-#define VIDEO_SIZE 3 *1024 *1024
+#define VIDEO_SIZE 10 *1024 *1024
 #define AUDIO_SIZE 1 *1024 *1024
 static uint32_t find_start_code(uint8_t *buf, uint32_t zeros_in_startcode)
 {
@@ -216,20 +216,22 @@ video_process:
             memset(&out, 0, sizeof(struct flvmux_packet));
             in.data = nal;
             in.size = packet_size;
-
+            
             ret = flvmux_setup_video_frame(flv_handle, &in, &out);
             if (ret > 0) {
                 log_print(TAG, "Start send data :%d %02x %02x %02x %02x %02x\n", ret, out.data[0], out.data[1], out.data[2], out.data[out.size -1], out.data[out.size - 2]);
                 ret = rtmp_write(rtmp_handle, out.data, (int)out.size);
                 free(out.data);
             }
-        } else {
+        } else if (nal[4] == 0x65 || (nal[4] & 0x1f) == 0x01) {
+            
             nal_next = h264_find_NAL(vbuf_off, vbuf_start + total_264 - vbuf_off);
             nal_frame_len = nal_next - nal - 4;
             vbuf_off = nal_next;
 
             int packet_size = nal_frame_len + 4;
-            log_print(TAG, "Frame without pps: [%d:%d] \n", nal - vbuf_start, nal_frame_len);
+            //log_print(TAG, "Frame without pps: [%d:%d] \n", nal - vbuf_start, nal_frame_len);
+            log_print(TAG, "frame with out pps: %02x %d pos:%d \n", nal[4], nal_frame_len, nal - vbuf_start);
             //log_print(TAG, "packetsize: %d\n", packet_size);
 
             struct flvmux_packet in, out;
@@ -239,13 +241,19 @@ video_process:
             in.size = packet_size;
             ret = flvmux_setup_video_frame(flv_handle, &in, &out);
             if (ret > 0) {
-                //log_print(TAG, "Start send data :%d %02x %02x %02x %02x %02x\n", ret, out.data[0], out.data[1], out.data[2], out.data[out.size -1], out.data[out.size - 2]);
                 ret = rtmp_write(rtmp_handle, out.data, ret);
+                log_print(TAG, "Start send data :%d %02x %02x %02x %02x %02x ret:%d\n", ret, out.data[0], out.data[1], out.data[2], out.data[out.size -1], out.data[out.size - 2], ret);
+                free(out.data);
             }
-
+        } else {
+            nal_next = h264_find_NAL(vbuf_off, vbuf_start + total_264 - vbuf_off);
+            nal_frame_len = nal_next - nal - 4;
+            vbuf_off = nal_next;
+            log_print(TAG, "SKip frame : %02x %d pos:%d \n", nal[4], nal_frame_len, nal - vbuf_start);
+            //log_print(TAG, "data:%02x \n", nal[4]);
         }
 end:
-        usleep(1000000);
+        usleep(30*1000);
         continue;
     }
 
