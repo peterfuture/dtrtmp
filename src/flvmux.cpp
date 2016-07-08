@@ -202,7 +202,7 @@ int flvmux_setup_video_frame(struct flvmux_context *handle, struct flvmux_packet
 PARSE_BEGIN:
     // Find Nal. Maybe SPS
     offset = 0;
-    log_print(TAG, "Curpos:%d %02x %02x %02x %02x %02x\n", vbuf_off - vbuf_start, vbuf_off[0], vbuf_off[1], vbuf_off[2], vbuf_off[3], vbuf_off[4]);
+    //log_print(TAG, "Curpos:%d %02x %02x %02x %02x %02x\n", vbuf_off - vbuf_start, vbuf_off[0], vbuf_off[1], vbuf_off[2], vbuf_off[3], vbuf_off[4]);
     nal = h264_find_NAL(vbuf_off, vbuf_start + total_264 - vbuf_off);
     if (nal == NULL) {
         goto end;
@@ -217,11 +217,11 @@ PARSE_BEGIN:
 
         nal_pps = h264_find_NAL(vbuf_off, vbuf_start + total_264 - vbuf_off);
         nal_len = nal_pps - nal - 4;
-        log_print(TAG, "nal: %02x %d pos:%d\n", nal[4], nal_len, nal - vbuf_start);
+        //log_print(TAG, "nal: %02x %d pos:%d\n", nal[4], nal_len, nal - vbuf_start);
         vbuf_off = nal_pps + 4;
         nal_frame = h264_find_NAL(vbuf_off, vbuf_start + total_264 - vbuf_off);
         nal_pps_len = nal_frame - nal_pps - 4;
-        log_print(TAG, "pps: %02x %d pos:%d \n", nal_pps[4], nal_pps_len, nal_pps - vbuf_start);
+        //log_print(TAG, "pps: %02x %d pos:%d \n", nal_pps[4], nal_pps_len, nal_pps - vbuf_start);
         vbuf_off = nal_frame;
 
         body_len = nal_len + nal_pps_len + 16;
@@ -283,7 +283,7 @@ PARSE_BEGIN:
         goto PARSE_BEGIN;
     } else if (nal[4] == 0x65 || (nal[4] & 0x1f) == 0x01) {
         nal_len = vbuf_end - nal - 4;
-        log_print(TAG, "nal len:%d \n", nal_len);
+        //log_print(TAG, "nal len:%d \n", nal_len);
         body_len = nal_len + 5 + 4; //flv VideoTagHeader +  NALU length
         output_len = body_len + FLV_TAG_HEAD_LEN + FLV_PRE_TAG_LEN;
         output = (uint8_t *)malloc(output_len);
@@ -354,7 +354,7 @@ end:
         memcpy(out->data + sps_len, frame_buf, frame_len);
         free(frame_buf);
     }
-    log_print(TAG, "sps:%d frame:%d %u out sp:%p\n", sps_len, frame_len, out->size, out->data);
+    //log_print(TAG, "sps:%d frame:%d %u out sp:%p\n", sps_len, frame_len, out->size, out->data);
     return (int)out->size;
 }
 

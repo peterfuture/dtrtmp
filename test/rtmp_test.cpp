@@ -84,8 +84,17 @@ uint8_t * get_nal(uint32_t *len, uint8_t **offset, uint8_t *start, uint32_t tota
 uint8_t *h264_find_NAL(uint8_t *buffer, uint32_t total)
 {
     uint8_t *buf = buffer;
-    log_print(TAG, "Total:%u %02x %02x %02x %02x\n", total, buf[0], buf[1], buf[2], buf[3]);
+    //log_print(TAG, "Total:%u %02x %02x %02x %02x\n", total, buf[0], buf[1], buf[2], buf[3]);
     while (total > 4) {
+#if 0
+        if (buf[0] == 0x00 && buf[1] == 0x00 && buf[2] == 0x01) {
+            // Found a NAL unit with 3-byte startcode
+            if (buf[3] & 0x1F == 0x5) {
+                // Found a reference frame, do something with it
+            }
+            break;
+        } else 
+#endif
         if (buf[0] == 0x00 && buf[1] == 0x00 && buf[2] == 0x00 && buf[3] == 0x01) {
             // Found a NAL unit with 4-byte startcode
             if (buf[4] & 0x1F == 0x5) {
@@ -184,29 +193,30 @@ video_process:
         }
         vbuf_off = nal + 4;
         if (nal[4] == 0x67) {
-            //nal_sps = get_nal(&nal_sps_len, &vbuf_off, vbuf_start, total_264);
+            // Including sps & pps
             nal_pps = h264_find_NAL(vbuf_off, vbuf_start + total_264 - vbuf_off);
             nal_len = nal_pps - nal - 4;
-            log_print(TAG, "nal: %02x %d pos:%d\n", nal[4], nal_len, nal - vbuf_start);
-            vbuf_off = nal_pps + 3;
+            //log_print(TAG, "nal: %02x %d pos:%d\n", nal[4], nal_len, nal - vbuf_start);
+            vbuf_off = nal_pps + 4;
             nal_frame = h264_find_NAL(vbuf_off, vbuf_start + total_264 - vbuf_off);
             nal_pps_len = nal_frame - nal_pps - 4;
-            log_print(TAG, "pps: %02x %d pos:%d \n", nal_pps[4], nal_pps_len, nal_pps - vbuf_start);
-            vbuf_off = nal_frame + 3;
+            //log_print(TAG, "pps: %02x %d pos:%d \n", nal_pps[4], nal_pps_len, nal_pps - vbuf_start);
+            vbuf_off = nal_frame + 4;
             nal_next = h264_find_NAL(vbuf_off, vbuf_start + total_264 - vbuf_off);
             nal_frame_len = nal_next - nal_frame - 4;
-            log_print(TAG, "frame: %02x %d pos:%d \n", nal_frame[4], nal_frame_len, nal_frame - vbuf_start);
+            //log_print(TAG, "frame: %02x %d pos:%d \n", nal_frame[4], nal_frame_len, nal_frame - vbuf_start);
             vbuf_off = nal_next;
 
             int packet_size = nal_len + nal_pps_len + nal_frame_len + 12;
-            log_print(TAG, "packetsize: %d\n", packet_size);
+            log_print(TAG, "Frame Including PPS: sps:[%d:%d] pps:[%d:%d]\n", nal - vbuf_start, nal_len, nal_pps - vbuf_start, nal_pps_len, nal_frame - vbuf_start, nal_frame_len);
+            //log_print(TAG, "packetsize: %d\n", packet_size);
 
             struct flvmux_packet in, out;
             memset(&in, 0, sizeof(struct flvmux_packet));
             memset(&out, 0, sizeof(struct flvmux_packet));
             in.data = nal;
             in.size = packet_size;
-                
+
             ret = flvmux_setup_video_frame(flv_handle, &in, &out);
             if (ret > 0) {
                 log_print(TAG, "Start send data :%d %02x %02x %02x %02x %02x\n", ret, out.data[0], out.data[1], out.data[2], out.data[out.size -1], out.data[out.size - 2]);
@@ -219,7 +229,8 @@ video_process:
             vbuf_off = nal_next;
 
             int packet_size = nal_frame_len + 4;
-            log_print(TAG, "packetsize: %d\n", packet_size);
+            log_print(TAG, "Frame without pps: [%d:%d] \n", nal - vbuf_start, nal_frame_len);
+            //log_print(TAG, "packetsize: %d\n", packet_size);
 
             struct flvmux_packet in, out;
             memset(&in, 0, sizeof(struct flvmux_packet));
@@ -228,7 +239,7 @@ video_process:
             in.size = packet_size;
             ret = flvmux_setup_video_frame(flv_handle, &in, &out);
             if (ret > 0) {
-                log_print(TAG, "Start send data :%d %02x %02x %02x %02x %02x\n", ret, out.data[0], out.data[1], out.data[2], out.data[out.size -1], out.data[out.size - 2]);
+                //log_print(TAG, "Start send data :%d %02x %02x %02x %02x %02x\n", ret, out.data[0], out.data[1], out.data[2], out.data[out.size -1], out.data[out.size - 2]);
                 ret = rtmp_write(rtmp_handle, out.data, ret);
             }
 
