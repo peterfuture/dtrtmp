@@ -27,6 +27,38 @@
 #define RTMP_LIVE_ADDR "rtmp://127.0.0.1:1935/live/test"
 #define VIDEO_SIZE 10 *1024 *1024
 #define AUDIO_SIZE 1 *1024 *1024
+
+#define AAC_ADTS_HEADER_SIZE 7
+uint8_t *get_adts(uint32_t *len, uint8_t **offset, uint8_t *start, uint32_t total)
+{
+    uint8_t *p  =  *offset;
+    uint32_t frame_len_1;
+    uint32_t frame_len_2;
+    uint32_t frame_len_3;
+    uint32_t frame_length;
+   
+    if (total < AAC_ADTS_HEADER_SIZE) {
+        return NULL;
+    }
+    if ((p - start) >= total) {
+        return NULL;
+    }
+    
+    if (p[0] != 0xff) {
+        return NULL;
+    }
+    if ((p[1] & 0xf0) != 0xf0) {
+        return NULL;
+    }
+    frame_len_1 = p[3] & 0x03;
+    frame_len_2 = p[4];
+    frame_len_3 = (p[5] & 0xe0) >> 5;
+    frame_length = (frame_len_1 << 11) | (frame_len_2 << 3) | frame_len_3;
+    *offset = p + frame_length;
+    *len = frame_length;
+    return p;
+}
+
 static uint32_t find_start_code(uint8_t *buf, uint32_t zeros_in_startcode)
 {
     uint32_t info;
@@ -115,7 +147,7 @@ uint8_t *h264_find_NAL(uint8_t *buffer, uint32_t total)
 int main()
 {
     int ret;
-    int audio_support = 0;
+    int audio_support = 1;
     int video_support = 1;
     struct rtmp_para rtmp_para;
     memset(&rtmp_para, 0, sizeof(struct rtmp_para));
@@ -154,15 +186,14 @@ int main()
     close(fd_aac);
 
     log_print(TAG, "audio size:%u video size:%u \n", total_aac, total_264);
-#if 0
-    ret = rtmp_write(rtmp_handle, buf_264, total_264);
-    ret = rtmp_write(rtmp_handle, buf_aac, total_aac);
-    log_print(TAG, "send audio size:%u video size:%u \n", total_aac, total_264);
-    return 0;
-#endif
+
     uint8_t *abuf_start = buf_aac;
     uint8_t *abuf_end = buf_aac + total_aac;
-    uint8_t *abuf_cur = buf_aac;
+    uint8_t *abuf_off = buf_aac;
+
+    uint32_t len;
+    uint32_t audio_frame_len;
+    uint8_t *audio_frame_start;
 
     uint8_t *vbuf_start = buf_264;
     uint8_t *vbuf_end = buf_264 + total_264;
@@ -178,7 +209,24 @@ int main()
         if (!audio_support) {
             goto video_process;
         }
-
+        audio_frame_start = get_adts(&audio_frame_len, &abuf_off, abuf_start, abuf_start + total_aac - abuf_off);
+        if (audio_frame_start == NULL){
+            abuf_off = abuf_start;
+            continue;
+        }
+        struct flvmux_packet audio_pkt_in, audio_pkt_out;
+        memset(&audio_pkt_in, 0, sizeof(struct flvmux_packet));
+        memset(&audio_pkt_out, 0, sizeof(struct flvmux_packet));
+        audio_pkt_in.data = audio_frame_start;
+        audio_pkt_in.size = audio_frame_len;
+        ret = flvmux_setup_audio_frame(flv_handle, &audio_pkt_in, &audio_pkt_out);
+        if (ret > 0) {
+            ret = rtmp_write(rtmp_handle, audio_pkt_out.data, (int)audio_pkt_out.size);
+            free(audio_pkt_out.data);
+            log_print(TAG, "Send audio apkt ok size:%d ret:%d\n", audio_pkt_out.size, ret);
+        } else
+            log_print(TAG, "Send audio apkt failed size:%d ret:%d\n", audio_pkt_out.size, ret);
+ 
 video_process:
         // process one video frame
         if (!video_support) {

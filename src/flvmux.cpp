@@ -20,10 +20,6 @@
 #include "log_print.h"
 #define TAG "FLVMUX"
 
-#define AAC_ADTS_HEADER_SIZE 7
-#define FLV_TAG_HEAD_LEN 11
-#define FLV_PRE_TAG_LEN 4
-
 // @brief start publish
 // @param [in] rtmp_sender handler
 // @param [in] flag        stream falg
@@ -112,9 +108,185 @@ struct flvmux_context *flvmux_open(struct flvmux_para *para)
     return handle;
 }
 
+static AudioSpecificConfig gen_config(uint8_t *frame)
+{
+    AudioSpecificConfig config = {0, 0, 0};
+
+    if (frame == NULL) {
+        return config;
+    }
+    config.audio_object_type = (frame[2] & 0xc0) >> 6;
+    config.sample_frequency_index =  (frame[2] & 0x3c) >> 2;
+    config.channel_configuration = (frame[3] & 0xc0) >> 6;
+    return config;
+}
+
+static uint8_t gen_audio_tag_header(AudioSpecificConfig config)
+{
+     uint8_t soundType = config.channel_configuration - 1; //0 mono, 1 stero
+     uint8_t soundRate = 0;
+     uint8_t val = 0;
+
+
+     switch (config.sample_frequency_index) {
+         case 10: { //11.025k
+             soundRate = 1;
+             break;
+         }
+         case 7: { //22k
+             soundRate = 2;
+             break;
+         }
+         case 4: { //44k
+             soundRate = 3;
+             break;
+         }
+         default:
+         { 
+             return val;
+         }
+    }
+    val = 0xA0 | (soundRate << 2) | 0x02 | soundType;
+    return val;
+}
+
+static uint8_t *get_adts(uint32_t *len, uint8_t **offset, uint8_t *start, uint32_t total)
+{
+    uint8_t *p  =  *offset;
+    uint32_t frame_len_1;
+    uint32_t frame_len_2;
+    uint32_t frame_len_3;
+    uint32_t frame_length;
+   
+    if (total < AAC_ADTS_HEADER_SIZE) {
+        return NULL;
+    }
+    if ((p - start) >= total) {
+        return NULL;
+    }
+    
+    if (p[0] != 0xff) {
+        return NULL;
+    }
+    if ((p[1] & 0xf0) != 0xf0) {
+        return NULL;
+    }
+    frame_len_1 = p[3] & 0x03;
+    frame_len_2 = p[4];
+    frame_len_3 = (p[5] & 0xe0) >> 5;
+    frame_length = (frame_len_1 << 11) | (frame_len_2 << 3) | frame_len_3;
+    *offset = p + frame_length;
+    *len = frame_length;
+    return p;
+}
+
 int flvmux_setup_audio_frame(struct flvmux_context *handle, struct flvmux_packet *in, struct flvmux_packet *out)
 {
-    return 0;
+    uint32_t audio_ts = (uint32_t)in->pts;
+    uint8_t * audio_buf = in->data; 
+    uint32_t audio_total = in->size;
+    uint8_t *audio_buf_offset = audio_buf;
+    uint8_t *audio_frame;
+    uint32_t adts_len;
+    uint32_t offset;
+    uint32_t body_len;
+    uint32_t output_len;
+    char *output ; 
+
+    offset = 0;
+    audio_frame = get_adts(&adts_len, &audio_buf_offset, audio_buf, audio_total);
+    if (audio_frame == NULL)
+        return -1;
+    if (handle->audio_config_ok == 0) {
+        handle->config = gen_config(audio_frame);
+        body_len = 2 + 2; //AudioTagHeader + AudioSpecificConfig
+        output_len = body_len + FLV_TAG_HEAD_LEN + FLV_PRE_TAG_LEN;
+        output = (char *)malloc(output_len);
+        // flv tag header
+        output[offset++] = 0x08; //tagtype audio
+        output[offset++] = (uint8_t)(body_len >> 16); //data len
+        output[offset++] = (uint8_t)(body_len >> 8); //data len
+        output[offset++] = (uint8_t)(body_len); //data len
+        output[offset++] = (uint8_t)(audio_ts >> 16); //time stamp
+        output[offset++] = (uint8_t)(audio_ts >> 8); //time stamp
+        output[offset++] = (uint8_t)(audio_ts); //time stamp
+        output[offset++] = (uint8_t)(audio_ts >> 24); //time stamp
+        output[offset++] = 0; //stream id 0
+        output[offset++] = 0x00; //stream id 0
+        output[offset++] = 0x00; //stream id 0
+
+        //flv AudioTagHeader
+        output[offset++] = gen_audio_tag_header(handle->config); // sound format aac
+        output[offset++] = 0x00; //aac sequence header
+
+        //flv VideoTagBody --AudioSpecificConfig
+        uint8_t audio_object_type = handle->config.audio_object_type + 1;
+        output[offset++] = (audio_object_type << 3)|(handle->config.sample_frequency_index >> 1); 
+        output[offset++] = ((handle->config.sample_frequency_index & 0x01) << 7) \
+                           | (handle->config.channel_configuration << 3) ;
+        //no need to set pre_tag_size
+        /*
+        uint32_t fff = body_len + FLV_TAG_HEAD_LEN;
+        output[offset++] = (uint8_t)(fff >> 24); //data len
+        output[offset++] = (uint8_t)(fff >> 16); //data len
+        output[offset++] = (uint8_t)(fff >> 8); //data len
+        output[offset++] = (uint8_t)(fff); //data len
+        */
+
+        out->data = (uint8_t *)malloc(output_len);
+        if(!out->data)
+            return -1;
+        out->size = output_len;
+        memcpy(out->data, output, output_len);
+        out->pts = in->pts;
+        out->type = 1;
+        free(output);
+        handle->audio_config_ok = 1;
+    } else {
+        body_len = 2 + adts_len - AAC_ADTS_HEADER_SIZE; // remove adts header + AudioTagHeader
+        output_len = body_len + FLV_TAG_HEAD_LEN + FLV_PRE_TAG_LEN;
+        output = (char *)malloc(output_len);
+        // flv tag header
+        output[offset++] = 0x08; //tagtype video
+        output[offset++] = (uint8_t)(body_len >> 16); //data len
+        output[offset++] = (uint8_t)(body_len >> 8); //data len
+        output[offset++] = (uint8_t)(body_len); //data len
+        output[offset++] = (uint8_t)(audio_ts >> 16); //time stamp
+        output[offset++] = (uint8_t)(audio_ts >> 8); //time stamp
+        output[offset++] = (uint8_t)(audio_ts); //time stamp
+        output[offset++] = (uint8_t)(audio_ts >> 24); //time stamp
+        output[offset++] = 0; //stream id 0
+        output[offset++] = 0x00; //stream id 0
+        output[offset++] = 0x00; //stream id 0
+
+        //flv AudioTagHeader
+        output[offset++] = gen_audio_tag_header(handle->config); // sound format aac
+        output[offset++] = 0x01; //aac raw data 
+
+        //flv VideoTagBody --raw aac data
+        memcpy(output + offset, audio_frame + AAC_ADTS_HEADER_SIZE,\
+                 (adts_len - AAC_ADTS_HEADER_SIZE)); //H264 sequence parameter set
+        /*
+        //previous tag size 
+        uint32_t fff = body_len + FLV_TAG_HEAD_LEN;
+        offset += (adts_len - AAC_ADTS_HEADER_SIZE);
+        output[offset++] = (uint8_t)(fff >> 24); //data len
+        output[offset++] = (uint8_t)(fff >> 16); //data len
+        output[offset++] = (uint8_t)(fff >> 8); //data len
+        output[offset++] = (uint8_t)(fff); //data len
+        */
+
+        out->data = (uint8_t *)malloc(output_len);
+        if(!out->data)
+            return -1;
+        out->size = output_len;
+        memcpy(out->data, output, output_len);
+        out->pts = in->pts;
+        out->type = 1;
+        free(output);
+     }
+
+    return output_len;
 }
 
 static uint8_t *h264_find_IDR_frame(char *buffer, int total)

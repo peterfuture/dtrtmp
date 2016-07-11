@@ -35,6 +35,8 @@ struct rtmp_context *rtmp_open(struct rtmp_para *para)
         return NULL;
     }
     RTMP_Init(rtmp);
+    rtmp->Link.timeout = 10; //10seconds
+    rtmp->Link.lFlags |= RTMP_LF_LIVE;
     int ret = RTMP_SetupURL(rtmp, para->uri);
     if (!ret) {
         goto fail;
