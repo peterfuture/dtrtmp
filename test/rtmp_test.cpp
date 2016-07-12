@@ -26,7 +26,7 @@
 // Red5 RTMP Server
 #define RTMP_LIVE_ADDR "rtmp://127.0.0.1:1935/live/test"
 #define VIDEO_SIZE 10 *1024 *1024
-#define AUDIO_SIZE 1 *1024 *1024
+#define AUDIO_SIZE 5*1024*1024
 
 #define AAC_ADTS_HEADER_SIZE 7
 uint8_t *get_adts(uint32_t *len, uint8_t **offset, uint8_t *start, uint32_t total)
@@ -147,7 +147,7 @@ uint8_t *h264_find_NAL(uint8_t *buffer, uint32_t total)
 int main()
 {
     int ret;
-    int audio_support = 1;
+    int audio_support = 0;
     int video_support = 1;
     struct rtmp_para rtmp_para;
     memset(&rtmp_para, 0, sizeof(struct rtmp_para));
@@ -203,6 +203,9 @@ int main()
     uint8_t *nal, *nal_pps, *nal_frame, *nal_next;
     uint32_t nal_len, nal_pps_len, nal_frame_len;
 
+        
+    struct flvmux_packet audio_pkt_in, audio_pkt_out;
+    struct flvmux_packet video_pkt_in, video_pkt_out;
     // parse av packet & send rtmp packet
     while (1) {
         // process one audio frame
@@ -214,7 +217,6 @@ int main()
             abuf_off = abuf_start;
             continue;
         }
-        struct flvmux_packet audio_pkt_in, audio_pkt_out;
         memset(&audio_pkt_in, 0, sizeof(struct flvmux_packet));
         memset(&audio_pkt_out, 0, sizeof(struct flvmux_packet));
         audio_pkt_in.data = audio_frame_start;
@@ -222,7 +224,7 @@ int main()
         ret = flvmux_setup_audio_frame(flv_handle, &audio_pkt_in, &audio_pkt_out);
         if (ret > 0) {
             ret = rtmp_write(rtmp_handle, audio_pkt_out.data, (int)audio_pkt_out.size);
-            free(audio_pkt_out.data);
+            //free(audio_pkt_out.data);
             log_print(TAG, "Send audio apkt ok size:%d ret:%d\n", audio_pkt_out.size, ret);
         } else
             log_print(TAG, "Send audio apkt failed size:%d ret:%d\n", audio_pkt_out.size, ret);
@@ -259,17 +261,15 @@ video_process:
             log_print(TAG, "Frame Including PPS: sps:[%d:%d] pps:[%d:%d]\n", nal - vbuf_start, nal_len, nal_pps - vbuf_start, nal_pps_len, nal_frame - vbuf_start, nal_frame_len);
             //log_print(TAG, "packetsize: %d\n", packet_size);
 
-            struct flvmux_packet in, out;
-            memset(&in, 0, sizeof(struct flvmux_packet));
-            memset(&out, 0, sizeof(struct flvmux_packet));
-            in.data = nal;
-            in.size = packet_size;
+            memset(&video_pkt_in, 0, sizeof(struct flvmux_packet));
+            memset(&video_pkt_out, 0, sizeof(struct flvmux_packet));
+            video_pkt_in.data = nal;
+            video_pkt_in.size = packet_size;
             
-            ret = flvmux_setup_video_frame(flv_handle, &in, &out);
+            ret = flvmux_setup_video_frame(flv_handle, &video_pkt_in, &video_pkt_out);
             if (ret > 0) {
-                log_print(TAG, "Start send data :%d %02x %02x %02x %02x %02x\n", ret, out.data[0], out.data[1], out.data[2], out.data[out.size -1], out.data[out.size - 2]);
-                ret = rtmp_write(rtmp_handle, out.data, (int)out.size);
-                free(out.data);
+                ret = rtmp_write(rtmp_handle, video_pkt_out.data, (int)video_pkt_out.size);
+                free(video_pkt_out.data);
             }
         } else if (nal[4] == 0x65 || (nal[4] & 0x1f) == 0x01) {
             
@@ -282,16 +282,14 @@ video_process:
             log_print(TAG, "frame with out pps: %02x %d pos:%d \n", nal[4], nal_frame_len, nal - vbuf_start);
             //log_print(TAG, "packetsize: %d\n", packet_size);
 
-            struct flvmux_packet in, out;
-            memset(&in, 0, sizeof(struct flvmux_packet));
-            memset(&out, 0, sizeof(struct flvmux_packet));
-            in.data = nal;
-            in.size = packet_size;
-            ret = flvmux_setup_video_frame(flv_handle, &in, &out);
+            memset(&video_pkt_in, 0, sizeof(struct flvmux_packet));
+            memset(&video_pkt_out, 0, sizeof(struct flvmux_packet));
+            video_pkt_in.data = nal;
+            video_pkt_in.size = packet_size;
+            ret = flvmux_setup_video_frame(flv_handle, &video_pkt_in, &video_pkt_out);
             if (ret > 0) {
-                ret = rtmp_write(rtmp_handle, out.data, ret);
-                log_print(TAG, "Start send data :%d %02x %02x %02x %02x %02x ret:%d\n", ret, out.data[0], out.data[1], out.data[2], out.data[out.size -1], out.data[out.size - 2], ret);
-                free(out.data);
+                ret = rtmp_write(rtmp_handle, video_pkt_out.data, ret);
+                free(video_pkt_out.data);
             }
         } else {
             nal_next = h264_find_NAL(vbuf_off, vbuf_start + total_264 - vbuf_off);

@@ -193,7 +193,12 @@ int flvmux_setup_audio_frame(struct flvmux_context *handle, struct flvmux_packet
     uint32_t output_len;
     char *output ; 
 
+
+    uint8_t *config_buf = NULL;
+    int config_size = 0;
+
     offset = 0;
+PARSE_BEGIN:
     audio_frame = get_adts(&adts_len, &audio_buf_offset, audio_buf, audio_total);
     if (audio_frame == NULL)
         return -1;
@@ -233,15 +238,15 @@ int flvmux_setup_audio_frame(struct flvmux_context *handle, struct flvmux_packet
         output[offset++] = (uint8_t)(fff); //data len
         */
 
-        out->data = (uint8_t *)malloc(output_len);
-        if(!out->data)
+        config_buf = (uint8_t *)output;
+        if(!config_buf)
             return -1;
-        out->size = output_len;
-        memcpy(out->data, output, output_len);
-        out->pts = in->pts;
-        out->type = 1;
-        free(output);
+        config_size = output_len;
         handle->audio_config_ok = 1;
+        // Handle Real Frame
+        audio_buf_offset = audio_frame;
+        output_len = 0;
+        goto PARSE_BEGIN;
     } else {
         body_len = 2 + adts_len - AAC_ADTS_HEADER_SIZE; // remove adts header + AudioTagHeader
         output_len = body_len + FLV_TAG_HEAD_LEN + FLV_PRE_TAG_LEN;
@@ -276,17 +281,24 @@ int flvmux_setup_audio_frame(struct flvmux_context *handle, struct flvmux_packet
         output[offset++] = (uint8_t)(fff); //data len
         */
 
-        out->data = (uint8_t *)malloc(output_len);
-        if(!out->data)
-            return -1;
-        out->size = output_len;
-        memcpy(out->data, output, output_len);
-        out->pts = in->pts;
-        out->type = 1;
-        free(output);
-     }
+    }
 
-    return output_len;
+    out->data = (uint8_t *)malloc(config_size + output_len);
+    if(!out->data)
+        return -1;
+    out->size = output_len + config_size;
+    if(config_size > 0) {
+        memcpy(out->data, config_buf, config_size);
+        free(config_buf);
+    }
+    if(output_len > 0) {
+        memcpy(out->data + config_size, output, output_len);
+        free(output);
+    }
+    out->pts = in->pts;
+    out->type = 1;
+    log_print(TAG, "Setup AAC Audio Frame size:%d out->data:%p\n", out->size, out->data);
+    return out->size;
 }
 
 static uint8_t *h264_find_IDR_frame(char *buffer, int total)
