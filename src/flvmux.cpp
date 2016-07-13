@@ -118,6 +118,7 @@ static AudioSpecificConfig gen_config(uint8_t *frame)
     config.audio_object_type = (frame[2] & 0xc0) >> 6;
     config.sample_frequency_index =  (frame[2] & 0x3c) >> 2;
     config.channel_configuration = (frame[3] & 0xc0) >> 6;
+    log_print(TAG, "Gen config: type:%d frequency:%d \n", (int)config.audio_object_type, (int)config.sample_frequency_index);
     return config;
 }
 
@@ -141,12 +142,17 @@ static uint8_t gen_audio_tag_header(AudioSpecificConfig config)
              soundRate = 3;
              break;
          }
+         case 3: { //48k not support but for debug mode
+             soundRate = 3;
+             break;
+         }
          default:
          { 
              return val;
          }
     }
     val = 0xA0 | (soundRate << 2) | 0x02 | soundType;
+    log_print(TAG, "soundType:%d soundRate:%d Val:%x \n", (int)soundType, (int)soundRate, val);
     return val;
 }
 
@@ -202,6 +208,7 @@ PARSE_BEGIN:
     audio_frame = get_adts(&adts_len, &audio_buf_offset, audio_buf, audio_total);
     if (audio_frame == NULL)
         return -1;
+    log_print(TAG, "Config:%d \n", handle->audio_config_ok);
     if (handle->audio_config_ok == 0) {
         handle->config = gen_config(audio_frame);
         body_len = 2 + 2; //AudioTagHeader + AudioSpecificConfig
