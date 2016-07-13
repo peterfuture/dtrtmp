@@ -28,6 +28,9 @@
 #define VIDEO_SIZE 10 *1024 *1024
 #define AUDIO_SIZE 5*1024*1024
 
+//#define DUMP_ENABLE 1
+#define dump_path "./out.flv"
+
 #define AAC_ADTS_HEADER_SIZE 7
 uint8_t *get_adts(uint32_t *len, uint8_t **offset, uint8_t *start, uint32_t total)
 {
@@ -144,6 +147,29 @@ uint8_t *h264_find_NAL(uint8_t *buffer, uint32_t total)
     return buf;
 }
 
+void dump_data(char *file, uint8_t *data, int size)
+{
+    FILE *fp = fopen(file, "ab+");
+    fwrite(data, 1, size, fp);
+    fclose(fp);
+}
+
+void write_flv_header(bool is_have_audio, bool is_have_video)
+{
+    char flv_file_header[] = "FLV\x1\x5\0\0\0\x9\0\0\0\0"; // have audio and have video
+    if (is_have_audio && is_have_video) {
+        flv_file_header[4] = 0x05;
+    } else if (is_have_audio && !is_have_video) {
+        flv_file_header[4] = 0x04;
+    } else if (!is_have_audio && is_have_video) {
+        flv_file_header[4] = 0x01;
+    } else {
+        flv_file_header[4] = 0x00;
+    }
+
+    dump_data(dump_path, (uint8_t *)flv_file_header, 13);
+}
+
 int main()
 {
     int ret;
@@ -169,12 +195,27 @@ int main()
     }
     log_print(TAG, "[%s:%d] Trace\n", __FUNCTION__, __LINE__);
 
-    // First Send FLV Header
+    // DEBUG
+    log_print(TAG, "Header data Begin:\n");
+    int i = 0;
+    for(i=0; i< flv_handle->header_size; i += 5) {
+        log_print(TAG, "%02x %02x %02x %02x %02x \n",
+                flv_handle->header[i], flv_handle->header[i+1],flv_handle->header[i+2],flv_handle->header[i+3],flv_handle->header[i+4]);
+    }
+    log_print(TAG, "Header data End\n");
+
+
+    // 1. Send FLV Header
     ret = rtmp_write(rtmp_handle, flv_handle->header, flv_handle->header_size);
     if (ret < 0) {
         return -1;
     }
     log_print(TAG, "Header send ok. ret:%d \n", ret);
+
+#ifdef DUMP_ENABLE
+    write_flv_header(audio_support, video_support);
+    dump_data(dump_path, flv_handle->header, flv_handle->header_size);
+#endif
 
     int fd_264 = open("out.264", O_RDONLY);
     uint8_t * buf_264 = (uint8_t *)malloc(VIDEO_SIZE);
@@ -206,9 +247,8 @@ int main()
         
     struct flvmux_packet audio_pkt_in, audio_pkt_out;
     struct flvmux_packet video_pkt_in, video_pkt_out;
-    // parse av packet & send rtmp packet
     while (1) {
-        // process one audio frame
+        // 2 Handle One AAC Frame
         if (!audio_support) {
             goto video_process;
         }
@@ -224,13 +264,16 @@ int main()
         ret = flvmux_setup_audio_frame(flv_handle, &audio_pkt_in, &audio_pkt_out);
         if (ret > 0) {
             ret = rtmp_write(rtmp_handle, audio_pkt_out.data, (int)audio_pkt_out.size);
+#ifdef DUMP_ENABLE
+            dump_data(dump_path, audio_pkt_out.data, audio_pkt_out.size);
+#endif
             free(audio_pkt_out.data);
             log_print(TAG, "Send audio apkt ok size:%d ret:%d\n", audio_pkt_out.size, ret);
         } else
             log_print(TAG, "Send audio apkt failed size:%d ret:%d\n", audio_pkt_out.size, ret);
  
+        // 2 Handle One H264 Frame
 video_process:
-        // process one video frame
         if (!video_support) {
             goto end;
         }
@@ -269,6 +312,9 @@ video_process:
             ret = flvmux_setup_video_frame(flv_handle, &video_pkt_in, &video_pkt_out);
             if (ret > 0) {
                 ret = rtmp_write(rtmp_handle, video_pkt_out.data, (int)video_pkt_out.size);
+#ifdef DUMP_ENABLE
+                dump_data(dump_path, video_pkt_out.data, video_pkt_out.size);
+#endif
                 free(video_pkt_out.data);
             }
         } else if (nal[4] == 0x65 || (nal[4] & 0x1f) == 0x01) {
@@ -289,6 +335,9 @@ video_process:
             ret = flvmux_setup_video_frame(flv_handle, &video_pkt_in, &video_pkt_out);
             if (ret > 0) {
                 ret = rtmp_write(rtmp_handle, video_pkt_out.data, ret);
+#ifdef DUMP_ENABLE
+                dump_data(dump_path, video_pkt_out.data, video_pkt_out.size);
+#endif
                 free(video_pkt_out.data);
             }
         } else {
