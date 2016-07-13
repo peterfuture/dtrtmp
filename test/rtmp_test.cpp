@@ -147,7 +147,7 @@ uint8_t *h264_find_NAL(uint8_t *buffer, uint32_t total)
 int main()
 {
     int ret;
-    int audio_support = 0;
+    int audio_support = 1;
     int video_support = 1;
     struct rtmp_para rtmp_para;
     memset(&rtmp_para, 0, sizeof(struct rtmp_para));
@@ -219,12 +219,12 @@ int main()
         }
         memset(&audio_pkt_in, 0, sizeof(struct flvmux_packet));
         memset(&audio_pkt_out, 0, sizeof(struct flvmux_packet));
-        audio_pkt_in.data = audio_frame_start;
-        audio_pkt_in.size = audio_frame_len;
+        audio_pkt_in.data = (uint8_t *)audio_frame_start;
+        audio_pkt_in.size = (uint32_t)audio_frame_len;
         ret = flvmux_setup_audio_frame(flv_handle, &audio_pkt_in, &audio_pkt_out);
         if (ret > 0) {
             ret = rtmp_write(rtmp_handle, audio_pkt_out.data, (int)audio_pkt_out.size);
-            //free(audio_pkt_out.data);
+            free(audio_pkt_out.data);
             log_print(TAG, "Send audio apkt ok size:%d ret:%d\n", audio_pkt_out.size, ret);
         } else
             log_print(TAG, "Send audio apkt failed size:%d ret:%d\n", audio_pkt_out.size, ret);

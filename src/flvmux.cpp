@@ -197,8 +197,8 @@ int flvmux_setup_audio_frame(struct flvmux_context *handle, struct flvmux_packet
     uint8_t *config_buf = NULL;
     int config_size = 0;
 
-    offset = 0;
 PARSE_BEGIN:
+    offset = 0;
     audio_frame = get_adts(&adts_len, &audio_buf_offset, audio_buf, audio_total);
     if (audio_frame == NULL)
         return -1;
@@ -248,7 +248,8 @@ PARSE_BEGIN:
         output_len = 0;
         goto PARSE_BEGIN;
     } else {
-        body_len = 2 + adts_len - AAC_ADTS_HEADER_SIZE; // remove adts header + AudioTagHeader
+        //body_len = 2 + adts_len - AAC_ADTS_HEADER_SIZE; // remove adts header + AudioTagHeader
+        body_len = 2 + adts_len; 
         output_len = body_len + FLV_TAG_HEAD_LEN + FLV_PRE_TAG_LEN;
         output = (char *)malloc(output_len);
         // flv tag header
@@ -269,8 +270,9 @@ PARSE_BEGIN:
         output[offset++] = 0x01; //aac raw data 
 
         //flv VideoTagBody --raw aac data
-        memcpy(output + offset, audio_frame + AAC_ADTS_HEADER_SIZE,\
-                 (adts_len - AAC_ADTS_HEADER_SIZE)); //H264 sequence parameter set
+        //memcpy(output + offset, audio_frame + AAC_ADTS_HEADER_SIZE, (adts_len - AAC_ADTS_HEADER_SIZE)); //H264 sequence parameter set
+        memcpy(output + offset, audio_frame, adts_len);
+        
         /*
         //previous tag size 
         uint32_t fff = body_len + FLV_TAG_HEAD_LEN;
@@ -297,7 +299,9 @@ PARSE_BEGIN:
     }
     out->pts = in->pts;
     out->type = 1;
+    log_print(TAG, "Data[%02x %02x %02x %02x]\n", out->data[0], out->data[1], out->data[2], out->data[3]);
     log_print(TAG, "Setup AAC Audio Frame size:%d out->data:%p\n", out->size, out->data);
+    
     return out->size;
 }
 
