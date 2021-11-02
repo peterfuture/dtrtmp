@@ -21,10 +21,6 @@ rtmp streaming & flv mux
 ## Thanks
 * [flvmuxer](https://github.com/rainfly123/flvmuxer)
 
-## Author
-
-peter_future@outlook.com
-
 # Licence
 
 GPL v3.0
